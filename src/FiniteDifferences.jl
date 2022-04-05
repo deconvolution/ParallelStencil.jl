@@ -27,10 +27,13 @@ To see a description of a macro type `?<macroname>` (including the `@`).
 """
 module FiniteDifferences1D
 export @d, @d2
-export @all, @inn
+export @all,@inn
 export @av
 export @maxloc, @minloc
 export @within
+
+# for higher order accuracy
+export @dx_1,@dx_8,@dx_12,@pick
 
 @doc "`@d(A)`: Compute differences between adjacent elements of `A`." :(@d)
 @doc "`@d2(A)`: Compute the 2nd order differences between adjacent elements of `A`." :(@d2)
@@ -51,16 +54,22 @@ macro    inn(A::Symbol)  esc(:( $A[$ixi ] )) end
 macro     av(A::Symbol)  esc(:(($A[$ix] + $A[$ix+1] )*0.5 )) end
 macro maxloc(A::Symbol)  esc(:( max( max($A[$ixi-1], $A[$ixi+1]), $A[$ixi] ) )) end
 macro minloc(A::Symbol)  esc(:( min( min($A[$ixi-1], $A[$ixi+1]), $A[$ixi] ) )) end
+# for higher order accuracy
+macro    pick(A::Symbol,xs,xs2)  esc(:( $A[$ixi+xs] )) end
+include("higher_order_accuracy_1D.jl");
 
 @doc WITHIN_DOC
 macro within(macroname::String, A::Symbol)
     if     macroname == "@all"  esc(  :($ix<=size($A,1)  )  )
-    elseif macroname == "@inn"  esc(  :($ix<=size($A,1)-2)  )
+    elseif macroname == "@inn"  esc(  :($ix<=size($A,1)-2)  );
+    elseif macroname == "@pick"  esc(  :($ix<=size($A,1)-(xs+xs2)) );
     else error("unkown macroname: $macroname. If you want to add your own assignement macros, overwrite the macro 'within(macroname::String, A::Symbol)'; to still use the exising macro within as well call ParallelStencil.FiniteDifferences{1|2|3}D.@within(macroname, A) at the end.")
     end
 end
 
-end # Module FiniteDifferences1D
+end
+
+# Module FiniteDifferences1D
 
 
 """
@@ -106,6 +115,8 @@ export @all, @inn, @inn_x, @inn_y
 export @av, @av_xa, @av_ya, @av_xi, @av_yi
 export @maxloc, @minloc
 export @within
+# higher order accuracy
+export @pick,@dx_1,@dy_1,@dz_1,@dx_8,@dy_8,@dz_8,@dx_12,@dy_12,@dz_12
 
 @doc "`@d_xa(A)`: Compute differences between adjacent elements of `A` along the dimension x." :(@d_xa)
 @doc "`@d_ya(A)`: Compute differences between adjacent elements of `A` along the dimension y." :(@d_ya)
@@ -148,6 +159,9 @@ macro maxloc(A::Symbol)  esc(:( max( max( max($A[$ixi-1,$iyi  ], $A[$ixi+1,$iyi 
                                           max($A[$ixi  ,$iyi-1], $A[$ixi  ,$iyi+1]) ) )) end
 macro minloc(A::Symbol)  esc(:( min( min( min($A[$ixi-1,$iyi  ], $A[$ixi+1,$iyi  ])  , $A[$ixi  ,$iyi  ] ),
                                           min($A[$ixi  ,$iyi-1], $A[$ixi  ,$iyi+1]) ) )) end
+# For higher order accuracy
+include("./higher_order_accuracy_2D.jl");
+macro  pick(A::Symbol,xs,xs2,ys,ys2)  esc(:( $A[$ix+xs,$iy+ys] )) end
 
 @doc WITHIN_DOC
 macro within(macroname::String, A::Symbol)
@@ -155,6 +169,7 @@ macro within(macroname::String, A::Symbol)
     elseif macroname == "@inn"    esc(  :($ix<=size($A,1)-2 && $iy<=size($A,2)-2)  )
     elseif macroname == "@inn_x"  esc(  :($ix<=size($A,1)-2 && $iy<=size($A,2)  )  )
     elseif macroname == "@inn_y"  esc(  :($ix<=size($A,1)   && $iy<=size($A,2)-2)  )
+    elseif macroname == "@pick"  esc(  :($ix<=size($A,1)-(xs+xs2) && $iy<=size($A,2)-(ys+ys2) ) );
     else error("unkown macroname: $macroname. If you want to add your own assignement macros, overwrite the macro 'within(macroname::String, A::Symbol)'; to still use the exising macro within as well call ParallelStencil.FiniteDifferences{1|2|3}D.@within(macroname, A) at the end.")
     end
 end
@@ -221,6 +236,9 @@ export @av, @av_xa, @av_ya, @av_za, @av_xi, @av_yi, @av_zi, @av_xya, @av_xza, @a
 export @maxloc, @minloc
 export @within
 
+# for higher order accuracy
+export @dx_1,@dy_1,@dz_1,@dx_8,@dy_8,@dz_8,@dx_12,@dy_12,@dz_12,@pick,@cur1,@cur3
+
 @doc "`@d_xa(A)`: Compute differences between adjacent elements of `A` along the dimension x." :(@d_xa)
 @doc "`@d_ya(A)`: Compute differences between adjacent elements of `A` along the dimension y." :(@d_ya)
 @doc "`@d_za(A)`: Compute differences between adjacent elements of `A` along the dimension z." :(@d_za)
@@ -253,17 +271,29 @@ export @within
 @doc "`@av_yzi(A)`: Compute averages between adjacent elements of `A` along the dimensions y and z and select the inner elements of `A` in the remaining dimension. Corresponds to `@inn_x(@av_yza(A))`." :(@av_yzi)
 @doc "`@maxloc(A)`: Compute the maximum between 2nd order adjacent elements of `A`, using a moving window of size 3." :(@maxloc)
 @doc "`@minloc(A)`: Compute the minimum between 2nd order adjacent elements of `A`, using a moving window of size 3." :(@minloc)
+@doc "`@dx_8`: Compute first-order derivative with 8 points in the x-direction." :(@dx_8)
+@doc "`@dy_8`: Compute first-order derivative with 8 points in the y-direction." :(@dy_8)
+@doc "`@dz_8`: Compute first-order derivative with 8 points in the z-direction." :(@dz_8)
+@doc "`@dx_12`: Compute first-order derivative with 12 points in the x-direction." :(@dx_12)
+@doc "`@dy_12`: Compute first-order derivative with 12 points in the y-direction." :(@dy_12)
+@doc "`@dz_12`: Compute first-order derivative with 12 points in the z-direction." :(@dz_12)
+
 
 import ..ParallelStencil: INDICES, WITHIN_DOC
 ix, iy, iz = INDICES[1], INDICES[2], INDICES[3]
-ixi, iyi, izi = :($ix+1), :($iy+1), :($iz+1)
+ixi, iyi, izi = :($ix+1), :($iy+1), :($iz+1);
 
 macro   d_xa(A::Symbol)  esc(:( $A[$ix+1,$iy  ,$iz  ] - $A[$ix  ,$iy  ,$iz  ] )) end
 macro   d_ya(A::Symbol)  esc(:( $A[$ix  ,$iy+1,$iz  ] - $A[$ix  ,$iy  ,$iz  ] )) end
 macro   d_za(A::Symbol)  esc(:( $A[$ix  ,$iy  ,$iz+1] - $A[$ix  ,$iy  ,$iz  ] )) end
+
 macro   d_xi(A::Symbol)  esc(:( $A[$ix+1,$iyi ,$izi ] - $A[$ix  ,$iyi ,$izi ] )) end
+
 macro   d_yi(A::Symbol)  esc(:( $A[$ixi ,$iy+1,$izi ] - $A[$ixi ,$iy  ,$izi ] )) end
 macro   d_zi(A::Symbol)  esc(:( $A[$ixi ,$iyi ,$iz+1] - $A[$ixi ,$iyi ,$iz  ] )) end
+##
+include("higher_order_accuracy_3D.jl");
+
 macro  d2_xi(A::Symbol)  esc(:( ($A[$ixi+1,$iyi  ,$izi  ] - $A[$ixi ,$iyi ,$izi ])  -  ($A[$ixi ,$iyi ,$izi ] - $A[$ixi-1,$iyi  ,$izi  ]) )) end
 macro  d2_yi(A::Symbol)  esc(:( ($A[$ixi  ,$iyi+1,$izi  ] - $A[$ixi ,$iyi ,$izi ])  -  ($A[$ixi ,$iyi ,$izi ] - $A[$ixi  ,$iyi-1,$izi  ]) )) end
 macro  d2_zi(A::Symbol)  esc(:( ($A[$ixi  ,$iyi  ,$izi+1] - $A[$ixi ,$iyi ,$izi ])  -  ($A[$ixi ,$iyi ,$izi ] - $A[$ixi  ,$iyi  ,$izi-1]) )) end
@@ -303,7 +333,8 @@ macro maxloc(A::Symbol)  esc(:( max( max( max( max($A[$ixi-1,$iyi  ,$izi  ], $A[
 macro minloc(A::Symbol)  esc(:( min( min( min( min($A[$ixi-1,$iyi  ,$izi  ], $A[$ixi+1,$iyi  ,$izi  ])  , $A[$ixi  ,$iyi  ,$izi  ] ),
                                                min($A[$ixi  ,$iyi-1,$izi  ], $A[$ixi  ,$iyi+1,$izi  ]) ),
                                                min($A[$ixi  ,$iyi  ,$izi-1], $A[$ixi  ,$iyi  ,$izi+1]) ) )) end
-
+# for higher order accuracy
+macro  pick(A::Symbol,xs,xs2,ys,ys2,zs,zs2)  esc(:( $A[$ix+xs,$iy+ys,$iz+zs] )); end
 @doc WITHIN_DOC
 macro within(macroname::String, A::Symbol)
     if     macroname == "@all"     esc(  :($ix<=size($A,1)   && $iy<=size($A,2)   && $iz<=size($A,3)  )  )
@@ -313,7 +344,11 @@ macro within(macroname::String, A::Symbol)
     elseif macroname == "@inn_z"   esc(  :($ix<=size($A,1)   && $iy<=size($A,2)   && $iz<=size($A,3)-2)  )
     elseif macroname == "@inn_xy"  esc(  :($ix<=size($A,1)-2 && $iy<=size($A,2)-2 && $iz<=size($A,3)  )  )
     elseif macroname == "@inn_xz"  esc(  :($ix<=size($A,1)-2 && $iy<=size($A,2)   && $iz<=size($A,3)-2)  )
-    elseif macroname == "@inn_yz"  esc(  :($ix<=size($A,1)   && $iy<=size($A,2)-2 && $iz<=size($A,3)-2)  )
+    elseif macroname == "@inn_yz"  esc(  :($ix<=size($A,1)   && $iy<=size($A,2)-2 && $iz<=size($A,3)-2)  );
+
+    # For higher order accuracy
+    elseif macroname == "@pick"    esc(  :($ix<=size($A,1)-(xs+xs2) && $iy<=size($A,2)-(ys+ys2) && $iz<=size($A,3)-(zs+zs2))  );
+
     else error("unkown macroname: $macroname. If you want to add your own assignement macros, overwrite the macro 'within(macroname::String, A::Symbol)'; to still use the exising macro within as well call ParallelStencil.FiniteDifferences{1|2|3}D.@within(macroname, A) at the end.")
     end
 end
